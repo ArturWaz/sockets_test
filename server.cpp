@@ -1,42 +1,116 @@
-#include <boost/asio.hpp> 
-#include <boost/array.hpp> 
-#include <iostream> 
-#include <string> 
+//
+// async_tcp_echo_server.cpp
+// ~~~~~~~~~~~~~~~~~~~~~~~~~
+//
+// Copyright (c) 2003-2014 Christopher M. Kohlhoff (chris at kohlhoff dot com)
+//
+// Distributed under the Boost Software License, Version 1.0. (See accompanying
+// file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
+//
 
-boost::asio::io_service io_service;
-boost::asio::ip::tcp::resolver resolver(io_service);
-boost::asio::ip::tcp::socket sock(io_service);
-boost::array<char, 4096> buffer;
+#include <cstdlib>
+#include <iostream>
+#include <memory>
+#include <utility>
+#include <boost/asio.hpp>
 
-void read_handler(const boost::system::error_code &ec, std::size_t bytes_transferred)
+using boost::asio::ip::tcp;
+
+class session
+        : public std::enable_shared_from_this<session>
 {
-    if (!ec)
+public:
+    session(tcp::socket socket)
+            : socket_(std::move(socket))
     {
-        std::cout << std::string(buffer.data(), bytes_transferred) << std::endl;
-        sock.async_read_some(boost::asio::buffer(buffer), read_handler);
     }
-}
 
-void connect_handler(const boost::system::error_code &ec)
-{
-    if (!ec)
+    void start()
     {
-        boost::asio::write(sock, boost::asio::buffer("GET / HTTP 1.1\r\nHost: highscore.de\r\n\r\n"));
-        sock.async_read_some(boost::asio::buffer(buffer), read_handler);
+        do_read();
     }
-}
 
-void resolve_handler(const boost::system::error_code &ec, boost::asio::ip::tcp::resolver::iterator it)
-{
-    if (!ec)
+private:
+    void do_read()
     {
-        sock.async_connect(*it, connect_handler);
+        auto self(shared_from_this());
+        socket_.async_read_some(boost::asio::buffer(data_, max_length),
+                [this, self](boost::system::error_code ec, std::size_t length)
+                {
+                    if (!ec)
+                    {
+                        do_write(length);
+                    }
+                });
     }
-}
 
-int main()
+    void do_write(std::size_t length)
+    {
+        auto self(shared_from_this());
+        boost::asio::async_write(socket_, boost::asio::buffer(data_, length),
+                [this, self](boost::system::error_code ec, std::size_t /*length*/)
+                {
+                    if (!ec)
+                    {
+                        do_read();
+                    }
+                });
+    }
+
+    tcp::socket socket_;
+    enum { max_length = 1024 };
+    char data_[max_length];
+};
+
+class server
 {
-    boost::asio::ip::tcp::resolver::query query("www.highscore.de", "80");
-    resolver.async_resolve(query, resolve_handler);
-    io_service.run();
-} 
+public:
+    server(boost::asio::io_service& io_service, short port)
+            : acceptor_(io_service, tcp::endpoint(tcp::v4(), port)),
+              socket_(io_service)
+    {
+        do_accept();
+    }
+
+private:
+    void do_accept()
+    {
+        acceptor_.async_accept(socket_,
+                [this](boost::system::error_code ec)
+                {
+                    if (!ec)
+                    {
+                        std::make_shared<session>(std::move(socket_))->start();
+                    }
+
+                    do_accept();
+                });
+    }
+
+    tcp::acceptor acceptor_;
+    tcp::socket socket_;
+};
+
+int main(int argc, char* argv[])
+{
+    try
+    {
+        if (argc != 2)
+        {
+            std::cerr << "Usage: async_tcp_echo_server <port>\n";
+            return 1;
+        }
+
+        boost::asio::io_service io_service;
+
+        server s(io_service, std::atoi(argv[1]));
+
+        io_service.run();
+    }
+    catch (std::exception& e)
+    {
+        std::cerr << "Exception: " << e.what() << "\n";
+    }
+
+    return 0;
+}
