@@ -146,6 +146,7 @@ private:
 
 int main(int argc, char* argv[])
 {
+    std::cout << "troll \n";
     try
     {
         if (argc != 2)
