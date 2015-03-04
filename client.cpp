@@ -33,18 +33,22 @@ int main(int argc, char* argv[])
         tcp::resolver resolver(io_service);
         boost::asio::connect(s, resolver.resolve({argv[1], argv[2]}));
 
-        std::cout << "Enter message: ";
-        char request[max_length];
-        std::cin.getline(request, max_length);
-        size_t request_length = std::strlen(request);
-        boost::asio::write(s, boost::asio::buffer(request, request_length));
+        while (true) {
 
-        char reply[max_length];
-        size_t reply_length = boost::asio::read(s,
-                boost::asio::buffer(reply, request_length));
-        std::cout << "Reply is: ";
-        std::cout.write(reply, reply_length);
-        std::cout << "\n";
+//            std::cout << "Enter message: ";
+//            char request[max_length];
+//            std::cin.getline(request, max_length);
+//            size_t request_length = std::strlen(request);
+//            boost::asio::write(s, boost::asio::buffer(request, request_length));
+
+            char reply[max_length];
+            size_t reply_length = boost::asio::read(s,
+                    boost::asio::buffer(reply, 5));
+            std::cout << "Reply is: ";
+            std::cout.write(reply, reply_length);
+            std::cout << "\n";
+
+        }
     }
     catch (std::exception& e)
     {

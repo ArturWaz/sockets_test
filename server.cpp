@@ -13,8 +13,20 @@
 #include <memory>
 #include <utility>
 #include <boost/asio.hpp>
+#include <thread>
+#include <mutex>
 
 using boost::asio::ip::tcp;
+
+
+
+class session;
+
+
+std::list<session*> sessionsList;
+std::mutex sessionListMutex;
+
+
 
 class session
         : public std::enable_shared_from_this<session>
@@ -23,6 +35,17 @@ public:
     session(tcp::socket socket)
             : socket_(std::move(socket))
     {
+        sessionListMutex.lock();
+        sessionsList.push_back(this);
+        sessionListMutex.unlock();
+        std::cout << "Session opened.\n";
+    }
+
+    ~session(){
+        sessionListMutex.lock();
+        sessionsList.remove(this);
+        sessionListMutex.unlock();
+        std::cout << "Session closed.\n";
     }
 
     void start()
@@ -30,18 +53,18 @@ public:
         do_read();
     }
 
+    inline void writeData(uint8_t const *data, std::size_t length) {
+        boost::asio::async_write(socket_, boost::asio::buffer(data, length),
+                [this](boost::system::error_code ec, std::size_t){});
+    }
+
 private:
     void do_read()
     {
         auto self(shared_from_this());
         socket_.async_read_some(boost::asio::buffer(data_, max_length),
-                [this, self](boost::system::error_code ec, std::size_t length)
-                {
-                    if (!ec)
-                    {
-                        do_write(length);
-                    }
-                });
+                [this, self](boost::system::error_code ec, std::size_t length){});
+//        if (data_[0] == 'E' && data_[1] == 'O' && data_[2] == 'F')
     }
 
     void do_write(std::size_t length)
@@ -91,8 +114,41 @@ private:
     tcp::socket socket_;
 };
 
+
+
+
+
+void sendingThread() {
+    uint8_t buffer[200] = {};
+
+    buffer[0] = 'a';
+    buffer[1] = 'r';
+    buffer[2] = 't';
+    buffer[3] = 'u';
+    buffer[4] = 'r';
+
+    while (true) {
+        sessionListMutex.lock();
+        if (sessionsList.empty()) {
+            sessionListMutex.unlock();
+            Sleep(1000);
+            continue;
+        }
+        for (auto &elem : sessionsList) {
+            elem->writeData(buffer,5);
+        }
+        sessionListMutex.unlock();
+        Sleep(1000);
+    }
+}
+
+
+
 int main(int argc, char* argv[])
 {
+    std::thread Thread(sendingThread);
+    Thread.detach();
+
     try
     {
         if (argc != 2)
@@ -114,3 +170,6 @@ int main(int argc, char* argv[])
 
     return 0;
 }
+
+
+
