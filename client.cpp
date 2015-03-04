@@ -45,7 +45,10 @@ int main(int argc, char* argv[])
             size_t reply_length = boost::asio::read(s,
                     boost::asio::buffer(reply, 5));
             std::cout << "Reply is: ";
-            std::cout.write(reply, reply_length);
+//            std::cout.write(reply, reply_length);
+            for (int i = 0; i < reply_length; ++i) {
+                std::cout << std::hex << reply[i] << " ";
+            }
             std::cout << "\n";
 
         }
